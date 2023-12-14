@@ -1,0 +1,23 @@
+{
+  "name": "truss_networks_back",
+  "version": "1.0.0",
+  "description": "Truss Networks Backend",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Truss-Networks/Truss-Networks-Back.git"
+  },
+  "keywords": [
+    "Backend",
+    "Codes"
+  ],
+  "author": "Sabai",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Truss-Networks/Truss-Networks-Back/issues"
+  },
+  "homepage": "https://github.com/Truss-Networks/Truss-Networks-Back#readme"
+}
