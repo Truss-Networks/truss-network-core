@@ -7,39 +7,41 @@ const mongodb = require("mongodb");
 const mongoose = require("mongoose");
 const multer = require("multer");
 
+const LocalStrategy = require("passport-local");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const saltRounds = 10;
 
-const Cprofile = require("./models/customerprofile");
-
 const { GridFsStorage } = require("multer-gridfs-storage");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
+const Users = require("./models/Users");
+const passport = require("passport");
 const port = 5000;
 const api = process.env.API_KEY;
-
+const cors = require("cors");
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:3000",
+  },
+});
 
 app.use(express.urlencoded({ extended: true }));
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors());
 
 io.on("connection", (socket) => {
-  socket.on("signnew", (room, callback) => {
-    socket.join(room);
-    console.log(socket.rooms);
-    socket.on("partner", (partner) => {
-      console.log(partner);
-      socket.on("message", (msg) => {
-        console.log(msg);
-        io.to(partner).emit("receive", msg);
-      });
+  socket.on("private message", (id) => {
+    socket.join(id);
+  });
+  socket.on("vere", (mh) => {
+    socket.on("newmsg", (msg) => {
+      io.to(mh).emit("rece", msg);
     });
   });
 });
-
 //Mongodb Connection with mongoose schema and models
 mongoose.connect(api, {
   serverSelectionTimeoutMS: 50000,
@@ -53,160 +55,65 @@ db.once("open", function () {
   console.log("database running...");
 });
 
-//gridfs middleware
-
-const storage1 = new GridFsStorage({
-  url: api,
-  file: (req, file) => {
-    return {
-      bucketName: "promotion",
-    };
-  },
-});
-
-const upload1 = multer({
-  storage: storage1,
-});
-
-const storage2 = new GridFsStorage({
-  url: api,
-  file: (req, file) => {
-    return {
-      bucketName: "bprofile",
-    };
-  },
-});
-
-const upload2 = multer({
-  storage: storage2,
-});
-
 //API Routes
-
-app.get("/allposts", async (req, res) => {
-  const collection = db.collection("promotion.chunks");
-  collection.aggregate(
-    [
-      {
-        $lookup: {
-          from: "promotion.files",
-          localField: "files_id",
-          foreignField: "_id",
-          as: "image",
-        },
-      },
-      {
-        $unwind: "$image",
-      },
-      {
-        $group: {
-          _id: "$files_id",
-          chunks: { $push: "$$ROOT" },
-          image: { $first: "$image" },
-        },
-      },
-      {
-        $match: {
-          "chunks.n": 0,
-        },
-      },
-
-      {
-        $project: {
-          _id: 0,
-          image: 1,
-          chunks: 1,
-        },
-      },
-    ],
-    async (err, result) => {
-      if (err) {
-        // handle the error
-        console.error(err);
-        return;
-      }
-      const files = await result.toArray();
-      // process the result of the aggregation pipeline
-      res.send(files);
-    }
-  );
+app.get("/", (req, res) => {
+  console.log("oiiii");
+  res.send("youii");
 });
-
-app.post("/post", upload1.single("image"), async (req, res, next) => {
-  console.log(req.body);
-  const filter = { filename: req.file.filename };
-  const update = {
-    $set: {
-      metadata: {
-        category: req.body.category,
-        company: req.body.company,
-        country: req.body.country,
-        city: req.body.city,
-        town: req.body.town,
-        promodet: req.body.promodet,
-      },
-    },
-  };
-  const collection = db.collection("promotion.files");
-  await collection.findOneAndUpdate(filter, update);
-});
-
-app.post("/cprofile", (req, res) => {
-  bcrypt.hash(req.body.cprofile.password, saltRounds, async (err, hash) => {
-    const profile = new Cprofile({
-      username: req.body.cprofile.username,
-      email: req.body.cprofile.email,
-      password: hash,
-    });
-
-    await profile.save();
-  });
-});
-
-app.post("/bprofile", upload2.single("imageb"), async (req, res, next) => {
-  console.log(req.file);
-  bcrypt.hash(req.body.password, saltRounds, async (err, hash) => {
-    const filter = { filename: req.file.filename };
-    const update = {
-      $set: {
-        metadata: {
-          firstname: req.body.fname,
-          lastname: req.body.lname,
-          email: req.body.email,
-          password: hash,
-          company: req.body.company,
-          country: req.body.country,
-          city: req.body.city,
-          town: req.body.town,
-          about: req.body.about,
-          category: req.body.category,
-        },
-      },
-    };
-
-    const collection = db.collection("bprofile.files");
-    await collection.findOneAndUpdate(filter, update);
-  });
+app.post("/getchats", async (req, res) => {
+  const user = await Users.findOne({ email: req.body.email }).exec();
+  res.send(user);
 });
 
 app.post("/login", async (req, res) => {
-  const email = req.body.logindet.email;
-  const password = req.body.logindet.password;
-
-  const user = await Cprofile.findOne({ email: email }).exec();
+  const user = await Users.findOne({ email: req.body.user.email }).exec();
   if (user) {
-    bcrypt.compare(password, user.password, (err, result) => {
-      result ? res.send("true") : res.send("false");
+    bcrypt.compare(req.body.user.password, user.password, (err, result) => {
+      result ? res.send("login sucessful") : res.send("incorrect password");
     });
   } else {
-    res.send("wrongusername");
+    res.send("user not found");
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("oyawas");
+app.post("/signup", (req, res) => {
+  res.send("received thanks");
+  const password = req.body.user.password;
+  bcrypt.hash(password, saltRounds, async (err, hash) => {
+    const small = new Users({
+      username: req.body.user.username,
+      email: req.body.user.email,
+      password: hash,
+    });
+    await small.save();
+  });
 });
 
+app.post("/picupload", async (req, res) => {
+  res.send("success");
+  const user = await Users.findOne({ email: req.body.profile.email }).exec();
+  user.profilepic = req.body.profile.url;
+  await user.save();
+});
+app.post("/newmsg", async (req, res) => {
+  const updatedDocument1 = await Users.findOneAndUpdate(
+    { email: req.body.chats.email },
+    { $push: { chats: req.body.chats } }
+  );
+  const updatedDocument2 = await Users.findOneAndUpdate(
+    { email: req.body.chats.receiver },
+    { $push: { chats: req.body.chats } }
+  );
+});
 httpServer.listen(port, () => {
   console.log("server running...");
 });
+/*
+  const user = await Users.findOne({ email: req.body.msg.email }).exec();
+  if (user) {
+    const jats = user.chats;
+    jats.push(req.body.msg);
+    user.chats = jats;
+    await user.update();
+  }
+  */
